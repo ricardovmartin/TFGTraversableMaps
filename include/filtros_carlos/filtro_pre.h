@@ -1,0 +1,65 @@
+#include <grid_map_ros/grid_map_ros.hpp>
+
+#include <filters/filter_chain.hpp>
+#include <ros/ros.h>
+#include <string>
+
+namespace filtro_pre {
+
+/*!
+ * Applies a chain of grid map filters to a topic and
+ * republishes the resulting grid map.
+ */
+class filtro_pre
+{
+ public:
+
+  /*!
+   * Constructor.
+   * @param nodeHandle the ROS node handle.
+   * @param success signalizes if filter is configured ok or not.
+   */
+  filtro_pre(ros::NodeHandle& nodeHandle, bool& success);
+
+  /*!
+   * Destructor.
+   */
+  virtual ~filtro_pre();
+
+  /*!
+  * Reads and verifies the ROS parameters.
+  * @return true if successful.
+  */
+  bool readParameters();
+
+  /*!
+   * Callback method for the incoming grid map message.
+   * @param message the incoming message.
+   */
+  void callback(const grid_map_msgs::GridMap& message);
+
+ private:
+
+  //! ROS nodehandle.
+  ros::NodeHandle& nodeHandle_;
+
+  //! Name of the input grid map topic.
+  std::string inputTopic_;
+
+  //! Name of the output grid map topic.
+  std::string outputTopic_;
+
+  //! Grid map subscriber
+  ros::Subscriber subscriber_;
+
+  //! Grid map publisher.
+  ros::Publisher publisher_;
+
+  //! Filter chain.
+  filters::FilterChain<grid_map::GridMap> filterChain_;
+
+  //! Filter chain parameters name.
+  std::string filterChainParametersName_;
+};
+
+} /* namespace */

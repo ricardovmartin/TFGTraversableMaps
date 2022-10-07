@@ -1,0 +1,122 @@
+grid_map_filters:
+  #Rellenar huecos
+  #- name: inpaint
+  #  type: gridMapCv/InpaintFilter
+  #  params:
+  #    input_layer: elevation
+  #    output_layer: elevation_inpainted
+  #    radius: 0.1    
+
+  - name: inpaint2
+    type: gridMapFilters/MedianFillFilter
+    params:
+      input_layer: elevation
+      output_layer: elevation_inpainted #output
+      fill_hole_radius: 0.2 # in m.
+      num_erode_dilation_iterations: 2
+      fill_mask_layer: fill_mask # A layer that is used to compute which areas to fill. If not present in the input it is automatically computed. 
+      debug: false # If enabled, the additional debug_infill_mask_layer is published. 
+      debug_infill_mask_layer: infill_mask # Layer used to visualize the intermediate, sparse-outlier removed fill mask. Only published if debug is enabled.
+
+    # Reduce noise with a radial blurring filter.
+  - name: mean_in_radius
+    type: gridMapFilters/MeanInRadiusFilter
+    params:
+      input_layer: elevation_inpainted
+      output_layer: elevation_smooth
+      radius: 0.8 #2.5
+
+  - name: duplicate
+    type: gridMapFilters/DuplicationFilter
+    params:
+      input_layer: elevation_smooth
+      output_layer: elevation_smooth2
+
+    # Compute surface normals.
+  - name: surface_normals
+    type: gridMapFilters/NormalVectorsFilter
+    params:
+      input_layer: elevation_smooth #elevation_inpainted
+      output_layers_prefix: normal_vectors_
+      radius: 0.3 #2
+      normal_vector_positive_axis: z
+      
+
+  # Add a color layer for visualization based on the surface normal.
+  - name: normal_color_map
+    type: gridMapFilters/NormalColorMapFilter
+    params:
+      input_layers_prefix: normal_vectors_
+      output_layer: normal_color
+
+     # Edge detection on elevation layer with convolution filter as alternative to filter above.
+  - name: edge_detection_x
+    type: gridMapFilters/SlidingWindowMathExpressionFilter
+    params:
+      input_layer: elevation_smooth 
+      output_layer: edges_x
+      expression: 'sumOfFinites([1,0,-1;2,0,-2;1,0,-1].*elevation_smooth)' #elevation_smooth2 # Edge detection.
+      # expression: 'sumOfFinites([0,-1,0;-1,5,-1;0,-1,0].*elevation_inpainted)' # Sharpen.
+      compute_empty_cells: false
+      edge_handling: mean # options: inside, crop, empty, mean
+      window_size: 3 # Make sure to make this compatible with the kernel matrix.
+
+   # Edge detection on elevation layer with convolution filter as alternative to filter above.
+  - name: edge_detection_y
+    type: gridMapFilters/SlidingWindowMathExpressionFilter
+    params:
+      input_layer: elevation_smooth
+      output_layer: edges_y
+      expression: 'sumOfFinites([1,2,1;0,0,0;-1,-2,-1].*elevation_smooth)' # Edge detection.
+      # expression: 'sumOfFinites([0,-1,0;-1,5,-1;0,-1,0].*elevation_inpainted)' # Sharpen.
+      compute_empty_cells: false
+      edge_handling: mean # options: inside, crop, empty, mean
+      window_size: 3 # Make sure to make this compatible with the kernel matrix.
+
+  # Compute slope from surface normal.
+  - name: slope
+    type: gridMapFilters/MathExpressionFilter
+    params:
+      output_layer: slope
+      expression: acos(normal_vectors_z)
+
+    #Calculo de edge
+  - name: edge
+    type: gridMapFilters/MathExpressionFilter
+    params:
+      output_layer: edge
+      expression: sqrt(square(edges_x) + square(edges_y))
+
+    # Compute roughness as absolute difference from map to smoothened map.
+  - name: roughness
+    type: gridMapFilters/MathExpressionFilter
+    params:
+      output_layer: roughness
+      expression: abs(elevation_inpainted - elevation_smooth)
+
+  # Compute traversability as normalized weighted sum of slope 
+  - name: traversability
+    type: gridMapFilters/MathExpressionFilter
+    params:
+      output_layer: traversability
+      expression: (1.0 - 0.8*(edge/0.2) - 0.1*(roughness/0.05) - 0.1*(slope/0.6)) 
+
+      #(1.0 - 0.8*(edge/0.1) - 0.1*(roughness/0.2) - 0.1*(slope/0.6))
+
+   # Set lower threshold on traversability.
+  - name: traversability_lower_threshold
+    type: gridMapFilters/ThresholdFilter
+    params:
+      condition_layer: traversability
+      output_layer: traversability
+      lower_threshold: 0.0
+      set_to: 0.0
+
+  # Set upper threshold on traversability.
+  - name: traversability_upper_threshold
+    type: gridMapFilters/ThresholdFilter
+    params:
+      condition_layer: traversability
+      output_layer: traversability
+      upper_threshold: 1.0
+      set_to: 1.0 # Other uses: .nan, .inf
